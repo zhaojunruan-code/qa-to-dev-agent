@@ -48,14 +48,15 @@ OUTPUT_TEMPLATE = """# 开发任务标题
 
 SYSTEM_PROMPT = """你是 QA-to-Dev Prompt Agent。
 
-你的职责是把测试工程师提供的简略说明转换成开发工程师或 AI 编程工具可以直接执行的结构化开发任务说明。
+你的职责是把测试工程师提供的简略说明、验收目标、问题描述、文档链接或补充材料，转换成开发工程师或 AI 编程工具可以直接执行的结构化开发任务说明。
 
 必须遵守：
 - 默认只读分析，不要求直接修改代码。
 - 不编造接口、字段、配置、业务规则或文件路径。
 - 如果项目上下文不足，把不确定项放入“待确认问题”。
+- 外部文档内容必须提炼为开发动作，无法访问时要明确说明。
 - 输出面向开发工程师，而不是只面向测试工程师。
-- 保持固定 Markdown 结构。
+- 保持固定 Markdown 结构，不要删除章节。
 - `Codex CLI Prompt` 必须是一段可直接交给 Codex CLI 的完整任务说明。
 """
 
@@ -70,11 +71,17 @@ def build_messages(qa_input: str, context: ProjectContext, extra_docs: str | Non
 
 def build_user_prompt(qa_input: str, context: ProjectContext, extra_docs: str | None = None) -> str:
     docs_block = extra_docs.strip() if extra_docs and extra_docs.strip() else "无"
-    return f"""请根据以下测试输入和当前项目上下文，生成结构化开发任务说明。
+    return f"""请根据以下测试输入、补充材料和当前项目上下文，生成结构化开发任务说明。
 
 必须使用这个输出结构，不要删除章节：
 
 {OUTPUT_TEMPLATE}
+
+生成要求：
+- 只基于已提供和已扫描到的信息。
+- 不确定的信息必须写入“待确认问题”。
+- 不要把文档链接原样当作已实现要求；需要提炼成开发动作或说明无法访问。
+- `Codex CLI Prompt` 需要包含足够上下文，让编码代理可以继续执行。
 
 ## 测试工程师输入
 
