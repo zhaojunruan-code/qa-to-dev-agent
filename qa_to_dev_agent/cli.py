@@ -15,6 +15,7 @@ from .prompt_builder import build_messages, build_user_prompt
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_console_encoding()
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -101,6 +102,14 @@ def _read_input(args: argparse.Namespace) -> str:
 
 def _read_file(path: str) -> str:
     return Path(path).expanduser().read_text(encoding="utf-8")
+
+
+def _configure_console_encoding() -> None:
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            reconfigure(encoding="utf-8", errors="replace")
 
 
 if __name__ == "__main__":

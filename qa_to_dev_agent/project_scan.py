@@ -185,7 +185,7 @@ def _detect_project_metadata(root: Path) -> tuple[list[str], list[str], list[str
     if package_json.exists():
         tech_stack.append("Node.js")
         try:
-            data = json.loads(package_json.read_text(encoding="utf-8"))
+            data = json.loads(package_json.read_text(encoding="utf-8-sig"))
             scripts = data.get("scripts", {})
             for name, command in scripts.items():
                 item = f"`npm run {name}`: `{command}`"
