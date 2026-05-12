@@ -70,6 +70,7 @@ P1:
 - More project framework signals.
 - More robust document extraction.
 - Remote Issue support through available CLI/auth.
+- Terminal interactive mode for multi-turn QA input, project selection, scan review, clarification, and confirmed output actions.
 
 P2:
 
@@ -85,6 +86,7 @@ P2:
 - M3: local structured task generation and Markdown saving.
 - M4: Issue backup and remote CLI fallback.
 - M5: test report and release review.
+- M6: terminal interactive mode planning and implementation.
 
 ## Acceptance Criteria
 
