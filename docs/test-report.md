@@ -33,6 +33,7 @@
 | Default unittest discovery | Passed | `python -m unittest discover -v` now runs 8 tests |
 | Explicit tests discovery | Passed | `python -m unittest discover -s tests -v` runs 8 tests |
 | BOM `package.json` scripts | Passed | Build, test, and lint scripts are detected |
+| `file://` document URL scheme | Passed | URL is rejected without calling `urlopen` |
 
 ## Passed Items
 
@@ -44,6 +45,7 @@
 - Unreachable document URLs are reported explicitly instead of stopping the workflow.
 - Default and explicit unittest discovery both execute the suite.
 - BOM-prefixed `package.json` files are supported for script detection.
+- `--docs-url` only allows `http` and `https`; `file://` is rejected without reading local file content.
 
 ## Failed Items
 
@@ -81,4 +83,4 @@ python -m unittest discover -s tests
 
 ## Release Recommendation
 
-Recommended for MVP release after the second regression. Remote LLM calls and remote Issue creation still require provider credentials and GitHub/GitLab permissions, so they should remain documented as environment-dependent.
+Recommended for MVP release after the final regression. The latest full run executed 9 tests successfully. Remote LLM calls and remote Issue creation still require provider credentials and GitHub/GitLab permissions, so they should remain documented as environment-dependent.

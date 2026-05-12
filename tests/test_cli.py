@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from qa_to_dev_agent.cli import main
 
@@ -67,6 +68,31 @@ class CliTests(unittest.TestCase):
             issues = list(issue_dir.glob("*.md"))
             self.assertEqual(len(issues), 1)
             self.assertIn("## 验收标准", issues[0].read_text(encoding="utf-8"))
+
+    def test_file_scheme_docs_url_is_not_fetched(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            secret = Path(tmp) / "secret.txt"
+            secret.write_text("DO_NOT_READ", encoding="utf-8")
+            output = Path(tmp) / "task.md"
+
+            with patch("qa_to_dev_agent.documents.urlopen") as mocked_urlopen:
+                code = main([
+                    "--project",
+                    tmp,
+                    "--input",
+                    "根据文档补充说明",
+                    "--docs-url",
+                    secret.as_uri(),
+                    "--local-only",
+                    "--output",
+                    str(output),
+                ])
+
+            self.assertEqual(code, 0)
+            mocked_urlopen.assert_not_called()
+            content = output.read_text(encoding="utf-8")
+            self.assertIn("Unsupported document URL scheme", content)
+            self.assertNotIn("DO_NOT_READ", content)
 
 
 if __name__ == "__main__":

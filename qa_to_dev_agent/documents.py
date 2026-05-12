@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlparse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -21,6 +22,9 @@ def _read_local_doc(path: str) -> str:
 
 
 def _fetch_url(url: str, timeout_seconds: int) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        return f"### Document URL: {url}\n\nUnsupported document URL scheme. Only http and https are allowed."
     request = Request(url, headers={"User-Agent": "qa-to-dev-prompt-agent/0.1"})
     try:
         with urlopen(request, timeout=timeout_seconds) as response:
