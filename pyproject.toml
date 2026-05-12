@@ -1,0 +1,13 @@
+[project]
+name = "qa-to-dev-prompt-agent"
+version = "0.1.0"
+description = "Read-only QA-to-dev task prompt generator with OpenAI-compatible LLM support."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+qa-to-dev = "qa_to_dev_agent.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
