@@ -10,6 +10,8 @@
 - Local Issue Markdown fallback.
 - Required section stability.
 - Terminal interactive mode.
+- Client-first Node CLI runtime.
+- OpenAI Developers app contract coverage.
 - Confirmation gates for file writes, LLM calls, and Issue creation.
 - Sensitive local file input rejection.
 - Target-project write boundary protection.
@@ -20,6 +22,7 @@
 - Runtime: Python 3
 - Project: QA-to-Dev Prompt Agent
 - LLM provider: not required for automated tests
+- Node.js: 22.22.0
 
 ## Test Cases
 
@@ -57,6 +60,17 @@
 | Issue backup inside target project rejection | Passed | `--issue-dir <project>/docs/issues` is blocked |
 | Real interactive local Issue path | Passed | `/issue local` uses `--issue-dir` and confirmation |
 | Real interactive save boundary | Passed | `/save <project>/task.md` is blocked after confirmation |
+| Node client `--help` | Passed | `node bin/qadev.mjs --help` exits 0 and shows client runtime usage |
+| Node client `--version` | Passed | `node bin/qadev.mjs --version` prints `0.1.0` |
+| Node client prove command | Passed | `node bin/qadev.mjs run --project . --input ... --local-only --print-prompt` exits 0 |
+| Node client missing project | Passed | Exits 2 with `run requires --project <path>` |
+| Node client missing input | Passed | Exits 2 with `run requires non-empty --input <text>` |
+| Node client LLM disabled gate | Passed | Exits 2 unless `--local-only` is supplied |
+| Node client prompt preview gate | Passed | Exits 2 unless `--print-prompt` is supplied |
+| Node client protected path scan | Passed | `.env*`, `lib`, `generated`, `dependency/dependencies`, `node_modules`, `vendor`, and `.git` are excluded |
+| Node client interactive smoke | Passed | `interactive` supports `/status` and `/exit` |
+| Node smoke suite | Passed | `node --test tests/node-cli-smoke.test.mjs` passes 9 tests |
+| Combined test script | Passed | `npm test` passes Node smoke and Python regression suites |
 
 ## Passed Items
 
@@ -73,6 +87,9 @@
 - Interactive write and remote side-effect operations are guarded by confirmation.
 - `.env*`, `lib`, generated, `dependency`, and `dependencies` local file inputs are rejected before reading.
 - Markdown output and Issue backups are blocked inside the selected target project.
+- `qadev` Node client is now the preferred user-facing entry direction.
+- `docs/client-runtime-contract.md` defines agent goal, input shape, expected output, tools, state, approval gates, and prove command.
+- Node client MVP is local-only: it does not call an LLM, write files, create Issues, run shell/git/build/test/install commands, or modify the target project.
 
 ## Failed Items
 
@@ -103,6 +120,10 @@ None after second regression.
 Run these commands before each release:
 
 ```powershell
+node bin/qadev.mjs --help
+node bin/qadev.mjs --version
+node bin/qadev.mjs run --project . --input "verify client-first CLI runtime" --local-only --print-prompt
+npm test
 python -m unittest discover -v
 python -m unittest discover -s tests
 python -m qa_to_dev_agent.cli --interactive
@@ -112,4 +133,4 @@ python -m qa_to_dev_agent.cli --interactive
 
 The table above groups behavior-level cases; it is not a one-to-one list of unittest methods.
 
-Recommended for MVP release after the final regression. The latest full unit run executed 28 tests successfully, including terminal interactive mode, scanner safety regressions, sensitive local input rejection, dependency directory rejection, generated directory rejection, and target-project write protection. Remote LLM calls and remote Issue creation still require provider credentials and GitHub/GitLab permissions, so they should remain documented as environment-dependent.
+Recommended for client-first runtime MVP release after final regression. The latest combined run passed 9 Node smoke tests and 28 Python regression tests. The Node client prove command also passed and confirms local-only prompt preview without LLM requests, target writes, target commands, or Issue creation. Remote LLM calls and remote Issue creation remain Python compatibility-path features until the client contract enables them with approval gates.

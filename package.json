@@ -1,0 +1,19 @@
+{
+  "name": "qa-to-dev-prompt-agent",
+  "version": "0.1.0",
+  "description": "Client-first CLI runtime for turning QA notes into developer-ready prompts.",
+  "type": "module",
+  "bin": {
+    "qadev": "./bin/qadev.mjs"
+  },
+  "scripts": {
+    "qadev": "node bin/qadev.mjs",
+    "test:node": "node --test tests/node-cli-smoke.test.mjs",
+    "test:python": "python -m unittest discover -v",
+    "test": "node --test tests/node-cli-smoke.test.mjs && python -m unittest discover -v"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {}
+}

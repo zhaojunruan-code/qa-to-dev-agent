@@ -34,6 +34,33 @@ Non-MVP:
 
 From the repository root:
 
+The client-first CLI entry is `qadev`. During the MVP you can run it directly with Node.js without installing dependencies:
+
+```powershell
+node bin/qadev.mjs --help
+node bin/qadev.mjs --version
+node bin/qadev.mjs run --project . --input "verify client-first CLI runtime" --local-only --print-prompt
+node bin/qadev.mjs interactive
+```
+
+After package installation, the package exposes this binary:
+
+```powershell
+qadev --help
+```
+
+The Node.js client is the preferred user-facing entry direction. This MVP is a zero-dependency client shell/prototype; the existing Python implementation remains available as the internal/reference engine and compatibility path.
+
+Local verification scripts:
+
+```powershell
+npm run test:node
+npm run test:python
+npm test
+```
+
+Python editable install remains supported:
+
 ```powershell
 python -m pip install -e .
 ```
