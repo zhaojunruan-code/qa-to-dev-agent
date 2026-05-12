@@ -9,6 +9,7 @@ It is designed for test engineers who can describe expected behavior, defects, a
 MVP includes:
 
 - QA input from `--input` or `--input-file`;
+- terminal interactive mode from `--interactive` / `-i`;
 - target project path from `--project`;
 - optional local documents via `--docs-file`;
 - optional document links via `--docs-url`;
@@ -53,17 +54,49 @@ $env:QADEV_LLM_API_KEY="your-provider-key"
 $env:QADEV_LLM_MODEL="your-model-name"
 ```
 
-Supported variables:
-
-- `QADEV_LLM_BASE_URL`: provider base URL, defaults to `https://api.openai.com/v1`;
-- `QADEV_LLM_API_KEY`: provider API key;
-- `QADEV_LLM_MODEL`: model name;
-- `QADEV_LLM_HTTP_REFERER`: optional header used by some providers;
-- `QADEV_LLM_APP_TITLE`: optional header used by some providers.
-
 The CLI does not print API keys and does not read `.env` automatically. Export variables in your shell or pass command-line options.
 
-## Usage
+## Interactive Mode
+
+Start the terminal REPL:
+
+```powershell
+python -m qa_to_dev_agent.cli --interactive
+```
+
+Interactive mode accepts normal text as QA input and slash commands for stateful work:
+
+```text
+/project C:\path\to\target-project
+/input 登录页按钮文案需要调整
+/docs add-file .\acceptance-notes.md
+/scan
+/preview prompt
+/generate --local
+/save .\docs\generated-task.md
+/issue local
+/exit
+```
+
+Useful commands:
+
+- `/help`: show commands.
+- `/status`: show session state without secrets.
+- `/project <path>`: select target project.
+- `/docs add-file <path>` and `/docs add-url <url>`: add supplemental material.
+- `/scan`: run read-only project scan.
+- `/questions`: show pending clarification questions.
+- `/preview prompt`: show the prompt that would be sent to the LLM.
+- `/generate --local`: generate a deterministic local task.
+- `/generate --llm`: call the configured LLM after confirmation.
+- `/save <path>`: save generated Markdown after confirmation.
+- `/issue local`: create local Issue Markdown after confirmation.
+- `/issue remote --repo owner/name`: try remote Issue creation after typed confirmation.
+
+The REPL does not read `.env`, does not scan `lib`, and does not run commands in the target project.
+Local input files and supplemental document files from `.env*`, `lib`, dependency, or generated directories are rejected. Markdown output and Issue backups are also rejected when the target path is inside the selected target project.
+
+## Batch Usage
 
 Preview the prompt sent to the model:
 
@@ -95,17 +128,6 @@ python -m qa_to_dev_agent.cli `
   --model "your-model-name"
 ```
 
-Include supplemental documents:
-
-```powershell
-python -m qa_to_dev_agent.cli `
-  --project "C:\path\to\target-project" `
-  --input "根据接口文档补充错误提示" `
-  --docs-file ".\acceptance-notes.md" `
-  --docs-url "https://example.com/api-doc" `
-  --local-only
-```
-
 Create a local Issue Markdown from the generated task:
 
 ```powershell
@@ -117,27 +139,16 @@ python -m qa_to_dev_agent.cli `
   --issue-title "订单列表筛选条件保留"
 ```
 
-Create a remote Issue when GitHub CLI or GitLab CLI is installed and authenticated:
-
-```powershell
-python -m qa_to_dev_agent.cli `
-  --project "C:\path\to\target-project" `
-  --input "订单列表筛选条件需要保留" `
-  --local-only `
-  --create-issue `
-  --issue-mode auto `
-  --issue-repository "owner/repo"
-```
-
 If remote Issue creation is unavailable, the CLI keeps a Markdown backup in `docs/issues/` and continues.
 
 ## Arguments
 
+- `--interactive`, `-i`: start the terminal REPL.
 - `--project`: target project path to inspect in read-only mode.
 - `--input`: inline QA note.
 - `--input-file`: file containing the QA note.
 - `--docs-file`: optional local document, repeatable.
-- `--docs-url`: optional remote document URL, repeatable.
+- `--docs-url`: optional remote document URL, repeatable. Only `http` and `https` are allowed.
 - `--print-prompt`: print the model prompt and make no model request.
 - `--local-only`: generate a deterministic local task without a model request.
 - `--output`: save generated Markdown to a specific file.
@@ -153,7 +164,6 @@ Generated tasks use this fixed Markdown structure:
 
 ```markdown
 # 开发任务标题
-
 ## 背景
 ## 测试输入摘要
 ## 当前项目上下文
@@ -179,6 +189,8 @@ Generated tasks use this fixed Markdown structure:
 
 - The analyzed project is scanned in read-only mode.
 - `lib`, `.git`, `.env*`, IDE folders, dependency folders, and generated folders are ignored.
+- Local file inputs from `.env*`, `lib`, dependency folders, and generated folders are rejected.
+- Markdown output and Issue backups cannot be written inside the selected target project.
 - The tool does not execute target project build scripts automatically.
 - Missing context is recorded as open questions instead of being invented.
 - API keys and secrets must not be placed in README, Issues, reports, or generated tasks.

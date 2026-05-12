@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from .safety import ensure_not_inside_project
+
 
 ISSUE_TEMPLATE = """# {title}
 
@@ -51,8 +53,10 @@ def write_local_issue(
     title: str,
     body: str,
     slug: str | None = None,
+    protected_project: str | Path | None = None,
 ) -> Path:
     target_dir = Path(docs_dir).expanduser().resolve()
+    ensure_not_inside_project(target_dir, protected_project, "Issue backup")
     target_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{slug or _slugify(title)}.md"
     target = target_dir / filename
@@ -67,8 +71,15 @@ def create_issue(
     slug: str | None = None,
     mode: str = "local",
     repository: str | None = None,
+    protected_project: str | Path | None = None,
 ) -> IssueResult:
-    local_path = write_local_issue(docs_dir=docs_dir, title=title, body=body, slug=slug)
+    local_path = write_local_issue(
+        docs_dir=docs_dir,
+        title=title,
+        body=body,
+        slug=slug,
+        protected_project=protected_project,
+    )
     if mode == "local":
         return IssueResult(local_path=local_path, remote_url=None, note="Created local Markdown issue only.")
     if mode not in {"auto", "remote"}:

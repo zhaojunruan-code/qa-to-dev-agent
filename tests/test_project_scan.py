@@ -16,12 +16,18 @@ class ProjectScanTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (root / ".env").write_text("SECRET=value\n", encoding="utf-8")
+            (root / "generated").mkdir()
+            (root / "generated" / "snapshot.py").write_text("SECRET='generated'\n", encoding="utf-8")
+            (root / "dependencies").mkdir()
+            (root / "dependencies" / "snapshot.py").write_text("SECRET='dependency'\n", encoding="utf-8")
             context = scan_project(str(root), qa_input="demo")
 
             markdown = context.to_markdown()
             self.assertIn("Python", markdown)
             self.assertNotIn("SECRET", markdown)
             self.assertNotIn(".env", "\n".join(context.sample_tree))
+            self.assertNotIn("generated/snapshot.py", "\n".join(context.sample_tree))
+            self.assertNotIn("dependencies/snapshot.py", "\n".join(context.sample_tree))
 
     def test_related_file_candidates_use_input_terms(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

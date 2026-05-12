@@ -5,6 +5,8 @@ from urllib.parse import urlparse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from .safety import validate_readable_user_file
+
 
 def collect_supplemental_materials(paths: list[str], urls: list[str], timeout_seconds: int = 15) -> str | None:
     blocks: list[str] = []
@@ -16,7 +18,7 @@ def collect_supplemental_materials(paths: list[str], urls: list[str], timeout_se
 
 
 def _read_local_doc(path: str) -> str:
-    source = Path(path).expanduser()
+    source = validate_readable_user_file(path, "supplemental document")
     text = source.read_text(encoding="utf-8", errors="replace")
     return f"### Local document: {source}\n\n{text[:8000]}"
 

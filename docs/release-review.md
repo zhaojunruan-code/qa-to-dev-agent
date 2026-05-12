@@ -4,7 +4,7 @@
 
 Approved for MVP release as a Git branch / pull request.
 
-The implementation satisfies the agreed MVP scope: Python CLI entrypoint, read-only project scanning, fixed structured task output, local deterministic generation, OpenAI-compatible LLM configuration, Markdown output saving, local Issue fallback, remote Issue CLI fallback, README, product plan, test report, release review, and Issue backups.
+The implementation satisfies the agreed MVP scope: Python CLI entrypoint, terminal interactive mode, read-only project scanning, fixed structured task output, local deterministic generation, OpenAI-compatible LLM configuration, Markdown output saving, local Issue fallback, remote Issue CLI fallback, README, product plan, test report, release review, and Issue backups.
 
 ## Release Blockers
 
@@ -17,6 +17,10 @@ Resolved blockers from review:
 - BOM-prefixed `package.json` files are supported for script detection.
 - Windows stdout/stderr are reconfigured to UTF-8 with replacement errors when supported.
 - `docs/release-review.md` is now a real release artifact rather than a placeholder.
+- `--interactive` starts a stateful REPL without requiring `--project`.
+- `/generate --llm`, `/save`, `/issue local`, and `/issue remote` require explicit confirmation before side effects.
+- Local `.env*`, `lib`, generated, `dependency`, and `dependencies` file inputs are rejected before reading.
+- Markdown output and Issue backups are blocked inside the selected target project.
 
 Local workstation note:
 
@@ -29,6 +33,7 @@ Local workstation note:
 - Add CI to run `python -m unittest discover -v`.
 - Consider GitHub/GitLab API integration beyond `gh` / `glab`.
 - Consider reading target-project `AGENTS.md` in a future version with explicit safety filtering.
+- Consider a richer TUI after the slash-command REPL proves useful.
 
 ## Risk Notes
 
@@ -36,6 +41,7 @@ Local workstation note:
 - Remote document fetching depends on network and permissions.
 - Remote LLM calls send scanned context to the configured provider; users should choose provider and project path deliberately.
 - Remote Issue creation depends on local CLI authentication when using the CLI path.
+- Users must choose an output or Issue backup directory outside the selected target project.
 
 ## Release Approval
 
@@ -44,13 +50,13 @@ Allowed to release MVP.
 Verification commands:
 
 ```powershell
-python -m compileall qa_to_dev_agent tests
 python -m unittest discover -v
 python -m unittest discover -s tests -v
+python -m qa_to_dev_agent.cli --interactive
 ```
 
 Latest verification result:
 
-- Compile check: passed.
-- Default unittest discovery: 9 tests passed.
-- Explicit unittest discovery: 9 tests passed.
+- Default unittest discovery: 28 tests passed.
+- Interactive smoke: passed.
+- Compile check note: source import and unittest validation are the release gate on this workstation because existing ignored `__pycache__` files can block `compileall` cache writes.

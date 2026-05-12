@@ -9,6 +9,10 @@
 - Markdown output saving.
 - Local Issue Markdown fallback.
 - Required section stability.
+- Terminal interactive mode.
+- Confirmation gates for file writes, LLM calls, and Issue creation.
+- Sensitive local file input rejection.
+- Target-project write boundary protection.
 
 ## Test Environment
 
@@ -21,7 +25,7 @@
 
 | Case | Result | Notes |
 | --- | --- | --- |
-| Compile package and tests | Passed | `python -m compileall qa_to_dev_agent tests` |
+| Source import through unittest | Passed | `python -m unittest discover -v` imports package and tests |
 | CLI `--local-only` generates Markdown | Passed | Output file contains required sections |
 | Empty input returns clear failure | Passed | Returns exit code 1 |
 | Missing project path returns clear failure | Passed | Returns exit code 1 |
@@ -30,10 +34,29 @@
 | Scanner skips `.env` content and filename | Passed | `.env` excluded from sample tree and excerpts |
 | Related file candidate discovery | Passed | QA terms match safe source filenames |
 | Unreachable document URL | Passed | CLI records fetch failure and continues in local mode |
-| Default unittest discovery | Passed | `python -m unittest discover -v` now runs 8 tests |
-| Explicit tests discovery | Passed | `python -m unittest discover -s tests -v` runs 8 tests |
+| Default unittest discovery | Passed | `python -m unittest discover -v` runs 28 tests |
+| Explicit tests discovery | Passed | `python -m unittest discover -s tests -v` runs the suite |
 | BOM `package.json` scripts | Passed | Build, test, and lint scripts are detected |
 | `file://` document URL scheme | Passed | URL is rejected without calling `urlopen` |
+| Interactive mode startup | Passed | `python -m qa_to_dev_agent.cli --interactive` starts without `--project` |
+| Interactive plain text input | Passed | Text is appended to QA input |
+| Interactive Windows project path | Passed | `/project C:\...` preserves backslashes |
+| Interactive read-only scan | Passed | `/scan --max-files 5` returns project context |
+| Interactive local generation | Passed | `/generate --local` returns the fixed Markdown structure |
+| Interactive save confirmation | Passed | `/save` does not write on `n`; writes on `y` |
+| Interactive LLM confirmation | Passed | `/generate --llm` cancels before client creation on `n` |
+| Interactive remote Issue confirmation | Passed | Wrong typed confirmation cancels before Issue creation |
+| Generated directory exclusion | Passed | `generated/` is skipped by the scanner |
+| Sensitive input file rejection | Passed | `--input-file .env.local` returns a clear error |
+| Sensitive docs file rejection | Passed | `--docs-file .env` returns a clear error |
+| Ignored directory docs file rejection | Passed | `--docs-file lib/generated.md` returns a clear error |
+| Dependency directory docs file rejection | Passed | `--docs-file dependencies/generated.md` returns a clear error |
+| Singular dependency directory docs file rejection | Passed | `--docs-file dependency/generated.md` returns a clear error |
+| Generated directory docs file rejection | Passed | `--docs-file generated/task.md` returns a clear error |
+| Output inside target project rejection | Passed | `--output <project>/task.md` is blocked |
+| Issue backup inside target project rejection | Passed | `--issue-dir <project>/docs/issues` is blocked |
+| Real interactive local Issue path | Passed | `/issue local` uses `--issue-dir` and confirmation |
+| Real interactive save boundary | Passed | `/save <project>/task.md` is blocked after confirmation |
 
 ## Passed Items
 
@@ -46,6 +69,10 @@
 - Default and explicit unittest discovery both execute the suite.
 - BOM-prefixed `package.json` files are supported for script detection.
 - `--docs-url` only allows `http` and `https`; `file://` is rejected without reading local file content.
+- Terminal interactive mode starts without a project and supports stateful scan, generate, save, and Issue flows.
+- Interactive write and remote side-effect operations are guarded by confirmation.
+- `.env*`, `lib`, generated, `dependency`, and `dependencies` local file inputs are rejected before reading.
+- Markdown output and Issue backups are blocked inside the selected target project.
 
 ## Failed Items
 
@@ -76,11 +103,13 @@ None after second regression.
 Run these commands before each release:
 
 ```powershell
-python -m compileall qa_to_dev_agent tests
 python -m unittest discover -v
 python -m unittest discover -s tests
+python -m qa_to_dev_agent.cli --interactive
 ```
 
 ## Release Recommendation
 
-Recommended for MVP release after the final regression. The latest full run executed 9 tests successfully. Remote LLM calls and remote Issue creation still require provider credentials and GitHub/GitLab permissions, so they should remain documented as environment-dependent.
+The table above groups behavior-level cases; it is not a one-to-one list of unittest methods.
+
+Recommended for MVP release after the final regression. The latest full unit run executed 28 tests successfully, including terminal interactive mode, scanner safety regressions, sensitive local input rejection, dependency directory rejection, generated directory rejection, and target-project write protection. Remote LLM calls and remote Issue creation still require provider credentials and GitHub/GitLab permissions, so they should remain documented as environment-dependent.
