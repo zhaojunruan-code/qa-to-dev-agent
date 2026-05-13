@@ -16,3 +16,7 @@ Planned next-stage issue:
 - [#10 新增终端交互模式：多轮 QA-to-Dev 工作台](https://github.com/zhaojunruan-code/qa-to-dev-agent/issues/10)
 
 Local Markdown backups are stored in this directory so the workflow remains usable even when remote Issue creation is unavailable.
+
+Additional local backups:
+
+- `09-llm-startup-preflight.md`: mandatory LLM connection preflight for the Node client.

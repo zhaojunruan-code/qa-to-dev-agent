@@ -88,10 +88,10 @@ async function main(argv) {
       return 0;
     }
     if (command === "run") {
-      return runCommand(parseRunArgs(argv.slice(1)));
+      return await runCommand(parseRunArgs(argv.slice(1)));
     }
     if (command === "interactive") {
-      return interactiveCommand(parseInteractiveArgs(argv.slice(1)));
+      return await interactiveCommand(parseInteractiveArgs(argv.slice(1)));
     }
 
     throw new UsageError(`Unknown command: ${command}`);
@@ -109,19 +109,28 @@ function printHelp() {
 Usage:
   qadev --help
   qadev --version
-  qadev run --project <path> --input <text> --local-only --print-prompt
-  qadev interactive
+  qadev run --project <path> --input <text> --print-prompt --base-url <url> --api-key <key> --model <name>
+  qadev interactive --base-url <url> --api-key <key> --model <name>
 
 Commands:
-  run          Read-only project scan and local task prompt preview.
-  interactive Start a local terminal session for project/input/status state.
+  run          Preflight the LLM connection, then scan and print a local task prompt preview.
+  interactive Preflight the LLM connection, then start a terminal project/input/status session.
 
 Run options:
   --project <path>   Target project to scan in read-only mode.
   --input <text>     QA note or acceptance input.
-  --local-only       Required for this MVP. No LLM request is made.
+  --local-only       Do not send QA input or project context to the model after preflight.
   --print-prompt     Print the structured prompt preview.
   --max-files <n>    Maximum files to list from the target project. Default: 80.
+  --base-url <url>   OpenAI-compatible API base URL. Env: QADEV_LLM_BASE_URL.
+  --api-key <key>    API key for the provider. Env: QADEV_LLM_API_KEY.
+  --model <name>     Model name to use. Env: QADEV_LLM_MODEL.
+
+LLM preflight:
+  The run and interactive commands must complete a tiny <base-url>/chat/completions
+  health check before scanning or accepting project input. This request sends
+  only a fixed health-check message, never QA notes or project code context.
+  API keys are never printed or stored by this client.
 
 Safety:
   The Node client ignores .env*, lib, generated, dependency/dependencies,
@@ -136,6 +145,11 @@ function parseRunArgs(argv) {
     localOnly: false,
     printPrompt: false,
     maxFiles: 80,
+    llm: {
+      baseURL: undefined,
+      apiKey: undefined,
+      model: undefined,
+    },
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -155,6 +169,12 @@ function parseRunArgs(argv) {
         throw new UsageError("--max-files must be a positive integer");
       }
       options.maxFiles = parsed;
+    } else if (arg === "--base-url") {
+      options.llm.baseURL = readValue(argv, ++index, "--base-url");
+    } else if (arg === "--api-key") {
+      options.llm.apiKey = readValue(argv, ++index, "--api-key");
+    } else if (arg === "--model") {
+      options.llm.model = readValue(argv, ++index, "--model");
     } else {
       throw new UsageError(`Unknown run option: ${arg}`);
     }
@@ -163,42 +183,61 @@ function parseRunArgs(argv) {
 }
 
 function parseInteractiveArgs(argv) {
-  if (argv.length === 0) {
-    return {};
+  const options = {
+    llm: {
+      baseURL: undefined,
+      apiKey: undefined,
+      model: undefined,
+    },
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--base-url") {
+      options.llm.baseURL = readValue(argv, ++index, "--base-url");
+    } else if (arg === "--api-key") {
+      options.llm.apiKey = readValue(argv, ++index, "--api-key");
+    } else if (arg === "--model") {
+      options.llm.model = readValue(argv, ++index, "--model");
+    } else {
+      throw new UsageError(`Unknown interactive option: ${arg}`);
+    }
   }
-  throw new UsageError(`Unknown interactive option: ${argv[0]}`);
+  return options;
 }
 
-function runCommand(options) {
+async function runCommand(options) {
   if (!options.project) {
     throw new UsageError("run requires --project <path>");
   }
   if (!options.input || !options.input.trim()) {
     throw new UsageError("run requires non-empty --input <text>");
   }
-  if (!options.localOnly) {
-    throw new UsageError("LLM requests are not implemented in the client-first MVP; use --local-only.");
-  }
   if (!options.printPrompt) {
     throw new UsageError("This MVP only supports prompt preview output; add --print-prompt.");
   }
 
+  const llm = await preflightLlmConnection(options.llm);
+  console.error(`qadev: LLM connection ready (${llm.provider}, model: ${llm.model})`);
   const context = scanProject(options.project, options.input, options.maxFiles);
-  console.log(renderPrompt(options.input, context));
+  console.log(renderPrompt(options.input, context, llm));
   return 0;
 }
 
-async function interactiveCommand() {
+async function interactiveCommand(options) {
+  const llm = await preflightLlmConnection(options.llm);
   const state = {
     project: undefined,
     input: "",
     scan: undefined,
     generated: false,
+    llm,
   };
 
   console.log("QA-to-Dev Client Runtime Interactive");
   console.log("");
-  console.log("Mode: local read-only MVP. LLM requests, file writes, and target commands are disabled.");
+  console.log(`LLM connection ready: ${llm.provider}, model: ${llm.model}`);
+  console.log("Mode: read-only prompt preview. QA input and project context are not sent to the model in this MVP.");
   console.log("Type /status, /project <path>, /input <text>, /scan, /help, or /exit.");
 
   const rl = readline.createInterface({
@@ -267,7 +306,7 @@ function handleInteractiveLine(state, line) {
     if (!state.scan) {
       throw new UsageError("Run /scan first.");
     }
-    console.log(renderPrompt(state.input, state.scan));
+    console.log(renderPrompt(state.input, state.scan, state.llm));
     state.generated = true;
     return;
   }
@@ -298,7 +337,7 @@ function printStatus(state) {
   console.log(`- QA input: ${state.input.length} chars`);
   console.log(`- Scan: ${state.scan ? "ready" : "not run"}`);
   console.log(`- Generated preview: ${state.generated ? "yes" : "no"}`);
-  console.log("- LLM: disabled in this MVP");
+  console.log(`- LLM: connected (${state.llm.provider}, model: ${state.llm.model})`);
 }
 
 function scanProject(projectRoot, qaInput, maxFiles) {
@@ -436,13 +475,15 @@ function findRelatedFiles(files, qaInput, limit = 8) {
     .map((item) => item.file);
 }
 
-function renderPrompt(qaInput, context) {
+function renderPrompt(qaInput, context, llm) {
   return `# QA-to-Dev Client Runtime Prompt Preview
 
 ## Runtime Status
 - CLI entry: \`qadev\`
-- Mode: local-only
-- LLM request: disabled in this MVP
+- Mode: read-only prompt preview
+- LLM preflight: completed via \`${llm.preflightEndpoint}\`
+- LLM model: \`${llm.model}\`
+- LLM generation request: not sent in this MVP
 - Target commands: not executed
 - Target writes: not performed
 
@@ -455,10 +496,128 @@ ${contextToMarkdown(context)}
 ## Safety Boundary
 - Read-only scan only.
 - Ignored paths: .env*, lib, generated, dependency, dependencies, node_modules, vendor, .git.
-- No shell, git, build, test, install, Issue creation, or LLM request is run by this command.
+- No shell, git, build, test, install, Issue creation, or LLM generation request is run by this command.
+- The LLM preflight sends only a fixed health-check message and does not send QA input or project code context.
 
 ## Developer Task Prompt
 Use the QA input and scanned context above to produce a developer-ready task. Before coding, identify the real target runtime, entry point, call chain, affected files, acceptance criteria, risk points, and open questions. Do not invent API fields, routes, files, or business rules.`;
+}
+
+async function preflightLlmConnection(rawOptions) {
+  const config = resolveLlmConfig(rawOptions);
+  const endpoint = buildChatCompletionsEndpoint(config.baseURL);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  let response;
+
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          { role: "system", content: "You are a connection health check. Reply with OK only." },
+          { role: "user", content: "Reply with OK." },
+        ],
+        max_tokens: 2,
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw new Error(`LLM connection failed: ${safeFetchMessage(error)}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    throw new Error(`LLM connection failed: chat completions endpoint returned HTTP ${response.status}`);
+  }
+
+  const body = await readJsonResponse(response);
+  const firstChoice = body?.choices?.[0];
+  const content = firstChoice?.message?.content ?? firstChoice?.text;
+  if (typeof content !== "string") {
+    throw new Error("LLM connection failed: chat completions endpoint did not return a compatible response");
+  }
+
+  return {
+    provider: endpoint.origin,
+    model: config.model,
+    preflightEndpoint: endpoint.toString(),
+  };
+}
+
+function resolveLlmConfig(rawOptions = {}) {
+  const baseURL = firstNonEmpty(rawOptions.baseURL, process.env.QADEV_LLM_BASE_URL);
+  const apiKey = firstNonEmpty(rawOptions.apiKey, process.env.QADEV_LLM_API_KEY);
+  const model = firstNonEmpty(rawOptions.model, process.env.QADEV_LLM_MODEL);
+  const missing = [];
+  if (!baseURL) {
+    missing.push("base URL (--base-url or QADEV_LLM_BASE_URL)");
+  }
+  if (!apiKey) {
+    missing.push("API key (--api-key or QADEV_LLM_API_KEY)");
+  }
+  if (!model) {
+    missing.push("model (--model or QADEV_LLM_MODEL)");
+  }
+  if (missing.length > 0) {
+    throw new UsageError(`Missing LLM configuration: ${missing.join(", ")}`);
+  }
+  return { baseURL, apiKey, model };
+}
+
+function buildChatCompletionsEndpoint(baseURL) {
+  let parsed;
+  try {
+    parsed = new URL(baseURL);
+  } catch {
+    throw new UsageError("LLM base URL must be an absolute http(s) URL");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new UsageError("LLM base URL must use http or https");
+  }
+  if (parsed.username || parsed.password) {
+    throw new UsageError("LLM base URL must not include username or password");
+  }
+  const pathname = parsed.pathname.replace(/\/+$/, "");
+  parsed.pathname = `${pathname}/chat/completions`;
+  parsed.search = "";
+  parsed.hash = "";
+  return parsed;
+}
+
+async function readJsonResponse(response) {
+  const text = await response.text();
+  if (!text.trim()) {
+    return {};
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("LLM connection failed: chat completions endpoint did not return valid JSON");
+  }
+}
+
+function safeFetchMessage(error) {
+  if (error?.name === "AbortError") {
+    return "chat completions endpoint timed out";
+  }
+  return error instanceof Error && error.message ? error.message.replace(/Bearer\s+\S+/gi, "Bearer [redacted]") : "chat completions endpoint request failed";
+}
+
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
 }
 
 function contextToMarkdown(context) {
@@ -531,7 +690,7 @@ function nextStepFor(error) {
   if (error instanceof UsageError) {
     return "run `node bin/qadev.mjs --help` and retry with the documented arguments.";
   }
-  return "check the project path and retry in local-only prompt-preview mode.";
+  return "check the LLM base URL, API key, model, and project path; then retry.";
 }
 
 class UsageError extends Error {}

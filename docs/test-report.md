@@ -62,14 +62,16 @@
 | Real interactive save boundary | Passed | `/save <project>/task.md` is blocked after confirmation |
 | Node client `--help` | Passed | `node bin/qadev.mjs --help` exits 0 and shows client runtime usage |
 | Node client `--version` | Passed | `node bin/qadev.mjs --version` prints `0.1.0` |
-| Node client prove command | Passed | `node bin/qadev.mjs run --project . --input ... --local-only --print-prompt` exits 0 |
+| Node client LLM startup preflight | Passed | `run` completes a mock `/chat/completions` health check before scanning |
 | Node client missing project | Passed | Exits 2 with `run requires --project <path>` |
 | Node client missing input | Passed | Exits 2 with `run requires non-empty --input <text>` |
-| Node client LLM disabled gate | Passed | Exits 2 unless `--local-only` is supplied |
+| Node client missing LLM config | Passed | Exits 2 before scanning and names missing `QADEV_LLM_*` settings |
+| Node client LLM connection failure | Passed | Reports sanitized HTTP status without leaking the API key |
 | Node client prompt preview gate | Passed | Exits 2 unless `--print-prompt` is supplied |
 | Node client protected path scan | Passed | `.env*`, `lib`, `generated`, `dependency/dependencies`, `node_modules`, `vendor`, and `.git` are excluded |
-| Node client interactive smoke | Passed | `interactive` supports `/status` and `/exit` |
-| Node smoke suite | Passed | `node --test tests/node-cli-smoke.test.mjs` passes 9 tests |
+| Node client interactive smoke | Passed | `interactive` completes LLM preflight before accepting `/status` and `/exit` |
+| Node client preflight safety | Passed | Mock request body contains fixed health-check text only, not QA input, project path, file names, or source content |
+| Node smoke suite | Passed | `node --test tests/node-cli-smoke.test.mjs` passes 13 tests |
 | Combined test script | Passed | `npm test` passes Node smoke and Python regression suites |
 
 ## Passed Items
@@ -89,7 +91,7 @@
 - Markdown output and Issue backups are blocked inside the selected target project.
 - `qadev` Node client is now the preferred user-facing entry direction.
 - `docs/client-runtime-contract.md` defines agent goal, input shape, expected output, tools, state, approval gates, and prove command.
-- Node client MVP is local-only: it does not call an LLM, write files, create Issues, run shell/git/build/test/install commands, or modify the target project.
+- Node client startup now requires an LLM health check, but sends only fixed health-check text and does not send QA input, target paths, file names, source content, write files, create Issues, run shell/git/build/test/install commands, or modify the target project.
 
 ## Failed Items
 
@@ -122,7 +124,7 @@ Run these commands before each release:
 ```powershell
 node bin/qadev.mjs --help
 node bin/qadev.mjs --version
-node bin/qadev.mjs run --project . --input "verify client-first CLI runtime" --local-only --print-prompt
+node bin/qadev.mjs run --project . --input "verify client-first CLI runtime" --print-prompt
 npm test
 python -m unittest discover -v
 python -m unittest discover -s tests
@@ -133,4 +135,4 @@ python -m qa_to_dev_agent.cli --interactive
 
 The table above groups behavior-level cases; it is not a one-to-one list of unittest methods.
 
-Recommended for client-first runtime MVP release after final regression. The latest combined run passed 9 Node smoke tests and 28 Python regression tests. The Node client prove command also passed and confirms local-only prompt preview without LLM requests, target writes, target commands, or Issue creation. Remote LLM calls and remote Issue creation remain Python compatibility-path features until the client contract enables them with approval gates.
+Recommended for client-first runtime MVP release after final regression. The latest combined run passed 13 Node smoke tests and 28 Python regression tests. Node tests use a local mock OpenAI-compatible provider to verify mandatory `/chat/completions` startup preflight without contacting real providers. Prompt preview still performs no LLM generation request, target writes, target commands, or Issue creation. Remote Issue creation remains a Python compatibility-path feature until the client contract enables it with approval gates.

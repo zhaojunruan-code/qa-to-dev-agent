@@ -37,9 +37,12 @@ From the repository root:
 The client-first CLI entry is `qadev`. During the MVP you can run it directly with Node.js without installing dependencies:
 
 ```powershell
+$env:QADEV_LLM_BASE_URL="https://openrouter.ai/api/v1"
+$env:QADEV_LLM_API_KEY="your-provider-key"
+$env:QADEV_LLM_MODEL="your-model-name"
 node bin/qadev.mjs --help
 node bin/qadev.mjs --version
-node bin/qadev.mjs run --project . --input "verify client-first CLI runtime" --local-only --print-prompt
+node bin/qadev.mjs run --project . --input "verify client-first CLI runtime" --print-prompt
 node bin/qadev.mjs interactive
 ```
 
@@ -73,7 +76,9 @@ python -m qa_to_dev_agent.cli --help
 
 ## Configuration
 
-The LLM client uses OpenAI-compatible `/chat/completions` endpoints. This allows official OpenAI, OpenRouter, or a private relay.
+The Node client must complete an LLM connection preflight before `run` scans a project or `interactive` accepts project input. The preflight calls the OpenAI-compatible `/chat/completions` endpoint with a fixed health-check message and does not send QA notes, prompts, project paths, or project code context.
+
+The same settings will be used by future OpenAI-compatible generation through official OpenAI, OpenRouter, or a private relay.
 
 ```powershell
 $env:QADEV_LLM_BASE_URL="https://openrouter.ai/api/v1"
@@ -81,7 +86,20 @@ $env:QADEV_LLM_API_KEY="your-provider-key"
 $env:QADEV_LLM_MODEL="your-model-name"
 ```
 
-The CLI does not print API keys and does not read `.env` automatically. Export variables in your shell or pass command-line options.
+You can also pass these values to the Node client:
+
+```powershell
+node bin/qadev.mjs run `
+  --project . `
+  --input "verify client-first CLI runtime" `
+  --print-prompt `
+  --base-url "https://openrouter.ai/api/v1" `
+  --api-key $env:QADEV_LLM_API_KEY `
+  --model "your-model-name"
+```
+
+The CLI does not print API keys, does not store API keys, and does not read `.env` automatically. Export variables in your shell or pass command-line options.
+Do not put credentials in `QADEV_LLM_BASE_URL`; the Node client rejects base URLs containing usernames or passwords.
 
 ## Interactive Mode
 
@@ -177,7 +195,10 @@ If remote Issue creation is unavailable, the CLI keeps a Markdown backup in `doc
 - `--docs-file`: optional local document, repeatable.
 - `--docs-url`: optional remote document URL, repeatable. Only `http` and `https` are allowed.
 - `--print-prompt`: print the model prompt and make no model request.
-- `--local-only`: generate a deterministic local task without a model request.
+- `--local-only`: keep generation local after the required `/chat/completions` preflight; no QA input or project context is sent to the model beyond the fixed health-check text.
+- `--base-url`: OpenAI-compatible API base URL for the Node client; also available as `QADEV_LLM_BASE_URL`.
+- `--api-key`: provider API key for the Node client; also available as `QADEV_LLM_API_KEY`.
+- `--model`: model name for the Node client; also available as `QADEV_LLM_MODEL`.
 - `--output`: save generated Markdown to a specific file.
 - `--output-dir`: save generated Markdown with a timestamped filename.
 - `--create-issue`: create an Issue from the generated task.
@@ -221,6 +242,8 @@ Generated tasks use this fixed Markdown structure:
 - The tool does not execute target project build scripts automatically.
 - Missing context is recorded as open questions instead of being invented.
 - API keys and secrets must not be placed in README, Issues, reports, or generated tasks.
+- `qadev run` and `qadev interactive` must complete the `/chat/completions` LLM preflight before project scanning or interactive project input.
+- The LLM preflight must not include QA notes, generated prompts, target project paths, or project code context.
 
 ## Limitations
 

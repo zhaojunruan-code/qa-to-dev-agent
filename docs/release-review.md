@@ -4,7 +4,7 @@
 
 Approved for client-first runtime MVP release as a Git branch / pull request after the new Node client files are committed.
 
-The implementation satisfies the expanded MVP scope: a client-first zero-dependency Node.js CLI shell/prototype, `qadev` help/version/run/interactive commands, a documented OpenAI Developers style app contract, read-only project scanning, local-only prompt preview, existing Python compatibility path, README updates, product plan, test report, release review, and safety-focused regression tests.
+The implementation satisfies the expanded MVP scope: a client-first zero-dependency Node.js CLI shell/prototype, `qadev` help/version/run/interactive commands, mandatory LLM startup preflight with custom OpenAI-compatible `baseURL/apiKey/model`, a documented OpenAI Developers style app contract, read-only project scanning, prompt preview without LLM generation, existing Python compatibility path, README updates, product plan, test report, release review, and safety-focused regression tests.
 
 ## Release Blockers
 
@@ -23,8 +23,8 @@ Resolved blockers from review:
 - Markdown output and Issue backups are blocked inside the selected target project.
 - `qadev` Node client is available through `bin/qadev.mjs` and `package.json` bin metadata.
 - `docs/client-first-runtime-plan.md` records the product-management requirement that feature descriptions must be standardized, executable, and unambiguous.
-- `docs/client-runtime-contract.md` records agent goal, input shape, expected output, tools, state, approval gates, and prove command.
-- Node client MVP is explicitly local-only and does not request an LLM, write files, create Issues, or run target commands.
+- `docs/client-runtime-contract.md` records agent goal, input shape, expected output, tools, state, approval gates, mandatory LLM preflight, and prove command.
+- Node client startup requires a fixed `/chat/completions` health check before `run` scans or `interactive` accepts commands. It does not send QA input, target project paths, file names, source content, or generated prompts during preflight.
 
 Local workstation note:
 
@@ -46,7 +46,8 @@ Local workstation note:
 
 - Static scanning provides candidate context, not a complete runtime call-chain proof.
 - Remote document fetching depends on network and permissions.
-- Remote LLM calls send scanned context to the configured provider; users should choose provider and project path deliberately.
+- The startup LLM preflight sends the configured model name and fixed health-check text to the configured provider; users should choose provider settings deliberately.
+- Future LLM generation may send scanned context to the configured provider and must remain behind an explicit approval gate.
 - Remote Issue creation depends on local CLI authentication when using the CLI path.
 - Users must choose an output or Issue backup directory outside the selected target project.
 - The Node client currently implements prompt preview only; Python remains the compatibility path for Markdown write and Issue features.
@@ -64,7 +65,10 @@ python -m unittest discover -s tests -v
 python -m qa_to_dev_agent.cli --interactive
 node bin/qadev.mjs --help
 node bin/qadev.mjs --version
-node bin/qadev.mjs run --project . --input "verify client-first CLI runtime" --local-only --print-prompt
+$env:QADEV_LLM_BASE_URL="<provider-base-url>"
+$env:QADEV_LLM_API_KEY="<provider-key>"
+$env:QADEV_LLM_MODEL="<model-name>"
+node bin/qadev.mjs run --project . --input "verify client-first CLI runtime" --print-prompt
 npm test
 ```
 
@@ -72,7 +76,7 @@ Latest verification result:
 
 - Default unittest discovery: 28 tests passed.
 - Interactive smoke: passed.
-- Node smoke: 9 tests passed.
+- Node smoke: 13 tests passed with a local mock OpenAI-compatible provider.
 - Combined `npm test`: passed Node smoke and Python regression suites.
-- Client prove command: passed.
+- Client prove command: covered by Node mock-provider tests; real provider smoke remains a manual environment-dependent check.
 - Compile check note: source import and unittest validation are the release gate on this workstation because existing ignored `__pycache__` files can block `compileall` cache writes.
