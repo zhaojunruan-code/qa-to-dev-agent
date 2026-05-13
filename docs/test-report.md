@@ -37,7 +37,7 @@
 | Scanner skips `.env` content and filename | Passed | `.env` excluded from sample tree and excerpts |
 | Related file candidate discovery | Passed | QA terms match safe source filenames |
 | Unreachable document URL | Passed | CLI records fetch failure and continues in local mode |
-| Default unittest discovery | Passed | `python -m unittest discover -v` runs 28 tests |
+| Default unittest discovery | Passed | `python -m unittest discover -v` runs 31 tests |
 | Explicit tests discovery | Passed | `python -m unittest discover -s tests -v` runs the suite |
 | BOM `package.json` scripts | Passed | Build, test, and lint scripts are detected |
 | `file://` document URL scheme | Passed | URL is rejected without calling `urlopen` |
@@ -69,9 +69,13 @@
 | Node client LLM connection failure | Passed | Reports sanitized HTTP status without leaking the API key |
 | Node client prompt preview gate | Passed | Exits 2 unless `--print-prompt` is supplied |
 | Node client protected path scan | Passed | `.env*`, `lib`, `generated`, `dependency/dependencies`, `node_modules`, `vendor`, and `.git` are excluded |
+| Node client package cache scan | Passed | `.pnpm-store` is excluded from preview and generation context |
+| Node client key path priority scan | Passed | `pages.json`, `src/pages`, `src/components`, `src/api`, and `src/store` are listed before low-signal files |
+| Node client Chinese term expansion | Passed | `订单/我的/状态` input matches `orders`, `mine/user/profile`, and status/tab/filter related paths |
 | Node client interactive smoke | Passed | `interactive` completes LLM preflight before accepting `/status` and `/exit` |
 | Node client preflight safety | Passed | Mock request body contains fixed health-check text only, not QA input, project path, file names, or source content |
-| Node smoke suite | Passed | `node --test tests/node-cli-smoke.test.mjs` passes 13 tests |
+| Node client interactive `/generate` | Passed | A second mock `/chat/completions` request is sent only after `/generate`, includes QA input and scan context, and does not leak the API key |
+| Node smoke suite | Passed | `node --test tests/node-cli-smoke.test.mjs` passes 17 tests |
 | Combined test script | Passed | `npm test` passes Node smoke and Python regression suites |
 
 ## Passed Items
@@ -87,7 +91,9 @@
 - `--docs-url` only allows `http` and `https`; `file://` is rejected without reading local file content.
 - Terminal interactive mode starts without a project and supports stateful scan, generate, save, and Issue flows.
 - Interactive write and remote side-effect operations are guarded by confirmation.
-- `.env*`, `lib`, generated, `dependency`, and `dependencies` local file inputs are rejected before reading.
+- `.env*`, `lib`, generated, `dependency`, `dependencies`, `.pnpm-store`, `unpackage`, and package cache directories are excluded from Node and Python scan output.
+- Node preview now includes a developer task skeleton and priority investigation locations.
+- Node interactive `/generate` is enabled as the explicit opt-in path for sending QA input and scan context to a configured OpenAI-compatible `/chat/completions` endpoint.
 - Markdown output and Issue backups are blocked inside the selected target project.
 - `qadev` Node client is now the preferred user-facing entry direction.
 - `docs/client-runtime-contract.md` defines agent goal, input shape, expected output, tools, state, approval gates, and prove command.
@@ -115,7 +121,7 @@ None after second regression.
 ## Fix Recommendations
 
 - Add CI to run `python -m unittest discover -s tests`.
-- Add provider mock tests for LLM HTTP response variants in a future iteration.
+- Add output structure validation for LLM-generated responses in a future iteration.
 
 ## Regression Recommendation
 
@@ -135,4 +141,4 @@ python -m qa_to_dev_agent.cli --interactive
 
 The table above groups behavior-level cases; it is not a one-to-one list of unittest methods.
 
-Recommended for client-first runtime MVP release after final regression. The latest combined run passed 13 Node smoke tests and 28 Python regression tests. Node tests use a local mock OpenAI-compatible provider to verify mandatory `/chat/completions` startup preflight without contacting real providers. Prompt preview still performs no LLM generation request, target writes, target commands, or Issue creation. Remote Issue creation remains a Python compatibility-path feature until the client contract enables it with approval gates.
+Recommended for client-first runtime MVP release after final regression. The latest combined `npm test` run passed 17 Node smoke tests and 31 Python regression tests. Node tests use a local mock OpenAI-compatible provider to verify mandatory `/chat/completions` startup preflight and explicit interactive `/generate` without contacting real providers. Prompt preview still performs no LLM generation request, target writes, target commands, or Issue creation. Remote Issue creation remains a Python compatibility-path feature until the client contract enables it with approval gates.

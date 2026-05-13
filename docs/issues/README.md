@@ -20,3 +20,4 @@ Local Markdown backups are stored in this directory so the workflow remains usab
 Additional local backups:
 
 - `09-llm-startup-preflight.md`: mandatory LLM connection preflight for the Node client.
+- `10-node-cli-preview-generate-iteration.md`: scan-noise filtering, actionable `/preview`, and explicit `/generate` for the Node client.

@@ -216,6 +216,48 @@ class CliTests(unittest.TestCase):
 
             self.assertEqual(code, 1)
 
+    def test_package_cache_docs_file_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            project.mkdir()
+            cache_dir = Path(tmp) / ".pnpm-store"
+            cache_dir.mkdir()
+            generated_doc = cache_dir / "generated.md"
+            generated_doc.write_text("generated content", encoding="utf-8")
+
+            code = main([
+                "--project",
+                str(project),
+                "--input",
+                "docs safety check",
+                "--docs-file",
+                str(generated_doc),
+                "--local-only",
+            ])
+
+            self.assertEqual(code, 1)
+
+    def test_uniapp_build_docs_file_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            project.mkdir()
+            output_dir = Path(tmp) / "unpackage"
+            output_dir.mkdir()
+            generated_doc = output_dir / "generated.md"
+            generated_doc.write_text("generated content", encoding="utf-8")
+
+            code = main([
+                "--project",
+                str(project),
+                "--input",
+                "docs safety check",
+                "--docs-file",
+                str(generated_doc),
+                "--local-only",
+            ])
+
+            self.assertEqual(code, 1)
+
     def test_output_inside_target_project_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "project"

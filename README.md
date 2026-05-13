@@ -16,6 +16,9 @@ MVP includes:
 - read-only project structure scanning;
 - technology stack, entry file, build script, and test script hints;
 - requirement-related code candidate discovery;
+- package/cache noise filtering such as `.pnpm-store`, `.vite`, `.cache`, `unpackage`, `dist`, and `build`;
+- interactive `/preview` with developer task skeleton and priority investigation files;
+- interactive `/generate` for explicit LLM-backed structured development task generation;
 - stable structured Markdown output;
 - local generation mode with `--local-only`;
 - OpenAI-compatible LLM mode with custom base URL and API key;
@@ -40,6 +43,9 @@ The client-first CLI entry is `qadev`. During the MVP you can run it directly wi
 $env:QADEV_LLM_BASE_URL="https://openrouter.ai/api/v1"
 $env:QADEV_LLM_API_KEY="your-provider-key"
 $env:QADEV_LLM_MODEL="your-model-name"
+# Optional for gateways that require application metadata:
+$env:QADEV_LLM_HTTP_REFERER="https://example.local"
+$env:QADEV_LLM_APP_TITLE="QA-to-Dev Prompt Agent"
 node bin/qadev.mjs --help
 node bin/qadev.mjs --version
 node bin/qadev.mjs run --project . --input "verify client-first CLI runtime" --print-prompt
@@ -78,7 +84,7 @@ python -m qa_to_dev_agent.cli --help
 
 The Node client must complete an LLM connection preflight before `run` scans a project or `interactive` accepts project input. The preflight calls the OpenAI-compatible `/chat/completions` endpoint with a fixed health-check message and does not send QA notes, prompts, project paths, or project code context.
 
-The same settings will be used by future OpenAI-compatible generation through official OpenAI, OpenRouter, or a private relay.
+The same settings are used by interactive `/generate` through official OpenAI, OpenRouter, or a private OpenAI-compatible relay.
 
 ```powershell
 $env:QADEV_LLM_BASE_URL="https://openrouter.ai/api/v1"
@@ -100,26 +106,24 @@ node bin/qadev.mjs run `
 
 The CLI does not print API keys, does not store API keys, and does not read `.env` automatically. Export variables in your shell or pass command-line options.
 Do not put credentials in `QADEV_LLM_BASE_URL`; the Node client rejects base URLs containing usernames or passwords.
+When a provider rejects the preflight with an HTTP error, the Node client prints the provider error detail when available and redacts the configured API key from that message.
 
-## Interactive Mode
+## Node Interactive Mode
 
 Start the terminal REPL:
 
 ```powershell
-python -m qa_to_dev_agent.cli --interactive
+node bin/qadev.mjs interactive
 ```
 
 Interactive mode accepts normal text as QA input and slash commands for stateful work:
 
 ```text
 /project C:\path\to\target-project
-/input 登录页按钮文案需要调整
-/docs add-file .\acceptance-notes.md
+/input 我的订单状态筛选需要修复
 /scan
-/preview prompt
-/generate --local
-/save .\docs\generated-task.md
-/issue local
+/preview
+/generate
 /exit
 ```
 
@@ -128,22 +132,27 @@ Useful commands:
 - `/help`: show commands.
 - `/status`: show session state without secrets.
 - `/project <path>`: select target project.
-- `/docs add-file <path>` and `/docs add-url <url>`: add supplemental material.
 - `/scan`: run read-only project scan.
-- `/questions`: show pending clarification questions.
-- `/preview prompt`: show the prompt that would be sent to the LLM.
-- `/generate --local`: generate a deterministic local task.
-- `/generate --llm`: call the configured LLM after confirmation.
-- `/save <path>`: save generated Markdown after confirmation.
-- `/issue local`: create local Issue Markdown after confirmation.
-- `/issue remote --repo owner/name`: try remote Issue creation after typed confirmation.
+- `/preview`: print a local prompt preview only. It includes a developer task skeleton and priority code locations, but sends no QA input or scan context to the model.
+- `/generate`: call the configured OpenAI-compatible `/chat/completions` endpoint and send the QA input plus read-only scan context to generate a structured development task.
 
-The REPL does not read `.env`, does not scan `lib`, and does not run commands in the target project.
+The Node REPL does not read `.env`, does not scan `lib`, does not modify the target project, and does not run commands in the target project. The only generation network request that can include QA input or scanned context is the explicit `/generate` command after startup preflight has already succeeded.
 Local input files and supplemental document files from `.env*`, `lib`, dependency, or generated directories are rejected. Markdown output and Issue backups are also rejected when the target path is inside the selected target project.
 
 ## Batch Usage
 
-Preview the prompt sent to the model:
+Preview the local Node prompt without sending QA input or scan context to the model:
+
+```powershell
+node bin/qadev.mjs run `
+  --project "C:\path\to\target-project" `
+  --input "我的订单状态筛选需要修复" `
+  --print-prompt
+```
+
+`qadev run` currently keeps generation in preview mode. Batch LLM generation is not enabled in the Node client in this iteration; use interactive `/generate` when you explicitly want to send QA input and scan context to the configured provider.
+
+Python compatibility path examples:
 
 ```powershell
 python -m qa_to_dev_agent.cli `
@@ -199,6 +208,8 @@ If remote Issue creation is unavailable, the CLI keeps a Markdown backup in `doc
 - `--base-url`: OpenAI-compatible API base URL for the Node client; also available as `QADEV_LLM_BASE_URL`.
 - `--api-key`: provider API key for the Node client; also available as `QADEV_LLM_API_KEY`.
 - `--model`: model name for the Node client; also available as `QADEV_LLM_MODEL`.
+- `--http-referer`: optional provider metadata header; also available as `QADEV_LLM_HTTP_REFERER`.
+- `--app-title`: optional provider metadata header; also available as `QADEV_LLM_APP_TITLE`.
 - `--output`: save generated Markdown to a specific file.
 - `--output-dir`: save generated Markdown with a timestamped filename.
 - `--create-issue`: create an Issue from the generated task.
@@ -236,7 +247,7 @@ Generated tasks use this fixed Markdown structure:
 ## Safety Principles
 
 - The analyzed project is scanned in read-only mode.
-- `lib`, `.git`, `.env*`, IDE folders, dependency folders, and generated folders are ignored.
+- `lib`, `.git`, `.env*`, IDE folders, dependency folders, `.pnpm-store`, package cache folders, `unpackage`, build output, and generated folders are ignored.
 - Local file inputs from `.env*`, `lib`, dependency folders, and generated folders are rejected.
 - Markdown output and Issue backups cannot be written inside the selected target project.
 - The tool does not execute target project build scripts automatically.
@@ -244,6 +255,7 @@ Generated tasks use this fixed Markdown structure:
 - API keys and secrets must not be placed in README, Issues, reports, or generated tasks.
 - `qadev run` and `qadev interactive` must complete the `/chat/completions` LLM preflight before project scanning or interactive project input.
 - The LLM preflight must not include QA notes, generated prompts, target project paths, or project code context.
+- Node interactive `/generate` is the explicit opt-in that sends QA input and scan context to the configured `/chat/completions` endpoint.
 
 ## Limitations
 

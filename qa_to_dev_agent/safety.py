@@ -4,14 +4,28 @@ from pathlib import Path
 
 
 BLOCKED_READ_DIRS = {
+    ".cache",
     ".git",
+    ".next",
+    ".nuxt",
+    ".output",
+    ".parcel-cache",
+    ".pnpm-store",
+    ".turbo",
+    ".vite",
+    ".yarn",
     "__pycache__",
+    "build",
+    "cache",
+    "coverage",
     "dependencies",
     "dependency",
     "dist",
     "generated",
     "lib",
     "node_modules",
+    "out",
+    "unpackage",
     "vendor",
 }
 

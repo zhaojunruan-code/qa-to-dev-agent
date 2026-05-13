@@ -39,24 +39,27 @@ Session commands:
 - `/input <text>` appends QA input and marks scan/generated state stale.
 - Plain text appends QA input and marks scan/generated state stale.
 - `/scan` performs a read-only project scan.
-- `/preview` prints the local prompt preview after a scan.
+- `/preview` prints the local prompt preview after a scan. It must include a developer task skeleton and priority code locations, and must not send QA input or scan context to the model.
+- `/generate` sends the QA input and read-only scan context to the configured OpenAI-compatible `/chat/completions` endpoint and prints the returned structured Markdown task.
 - `/status` prints non-secret session state.
 - `/exit` exits the session.
 
-`run` and `interactive` must resolve LLM configuration and complete a connection preflight before scanning a project or accepting project input. The preflight calls `<baseURL>/chat/completions` with a fixed health-check message only. It must not send QA notes, generated prompts, document bodies, file names, project code, or project paths to the provider.
+`run` and `interactive` must resolve LLM configuration and complete a connection preflight before scanning a project or accepting project input. The preflight calls `<baseURL>/chat/completions` with a fixed health-check message only. It must not send QA notes, generated prompts, document bodies, file names, project code, or project paths to the provider. Interactive `/generate` is the explicit opt-in generation command and may send QA input plus scan context after preflight.
 
 ## Expected Output
 
-`qadev run --print-prompt` prints Markdown with:
+`qadev run --print-prompt` and interactive `/preview` print Markdown with:
 
 - runtime status;
 - LLM preflight status and selected model;
 - QA input;
 - current project context;
+- priority code locations to investigate first;
+- a developer task skeleton;
 - safety boundary;
 - developer task prompt.
 
-The output must explicitly state that LLM generation requests are disabled in the MVP and that no target writes, target commands, shell commands, git commands, build commands, test commands, install commands, Issue creation, or remote side effects were performed. It may mention the preflight chat completions endpoint but must never include API keys or secret-like values.
+The preview output must explicitly state that no LLM generation request was sent by the preview command and that no target writes, target commands, shell commands, git commands, build commands, test commands, install commands, Issue creation, or target-project side effects were performed. It may mention the preflight chat completions endpoint but must never include API keys or secret-like values.
 
 Errors must exit non-zero and include:
 
@@ -86,7 +89,7 @@ Output:
   "root": "absolute string path",
   "fileCount": 0,
   "signals": ["string"],
-  "sampleTree": ["relative/path"],
+  "sampleTree": ["priority relative/path"],
   "techStack": ["string"],
   "entryFiles": ["relative/path"],
   "buildScripts": ["string"],
@@ -99,7 +102,9 @@ Side effects: none.
 
 Safety:
 
-- ignores `.env*`, `.git`, `lib`, `generated`, `dependency`, `dependencies`, `node_modules`, `vendor`, and IDE/cache directories;
+- ignores `.env*`, `.git`, `lib`, `generated`, `dependency`, `dependencies`, `node_modules`, `vendor`, `.pnpm-store`, `unpackage`, package cache/build output directories, and IDE/cache directories;
+- prioritizes `pages.json`, `src/pages`, `src/components`, `src/api`, `src/store`, `src/router`, and `src/utils` before low-signal files;
+- expands common Chinese and English requirement terms such as `订单/order/orders`, `我的/mine/user/profile`, and `状态/status/tab/tabs/switch/filter` when ranking requirement-related candidates;
 - does not execute package scripts;
 - does not read protected files for content extraction in the MVP.
 
@@ -174,11 +179,39 @@ Safety:
 - preflight must complete before `scan_project` in `run`;
 - preflight must complete before the interactive prompt accepts commands in `interactive`.
 
+### `request_llm_generation`
+
+Enabled only for interactive `/generate`.
+
+Input:
+
+```json
+{
+  "qaInput": "string",
+  "projectContext": "scan_project output",
+  "baseURL": "string absolute http(s) URL",
+  "apiKey": "string secret",
+  "model": "string"
+}
+```
+
+Behavior:
+
+- uses the same OpenAI-compatible `/chat/completions` endpoint and optional provider metadata headers as preflight;
+- sends the QA input, scan context, and required Markdown structure only after the user explicitly enters `/generate`;
+- prints the model response as Markdown;
+- does not modify the target project, write files, create Issues, run commands, or persist state.
+
+Safety:
+
+- API keys are never printed or included in generated output by the client;
+- provider errors are sanitized before display;
+- `/preview`, `/scan`, `/status`, and `run --print-prompt` must not call this tool.
+
 ### Future Tools Not Enabled In MVP
 
 The following tools are contract placeholders only and require explicit approval gates before implementation:
 
-- `request_llm_generation`;
 - `write_markdown_output`;
 - `create_local_issue`;
 - `create_remote_issue`;
@@ -207,11 +240,10 @@ State rules:
 
 ## Approval Gates
 
-MVP has no approval prompts because the only remote side effect is the required LLM `/chat/completions` preflight. The preflight is mandatory for `run` and `interactive`, uses only provider configuration plus fixed health-check text, and sends no QA or project context.
+MVP has no typed approval prompts in the Node client. The required startup preflight is automatic and sends only provider configuration plus fixed health-check text. Interactive `/generate` is an explicit command gate: QA input and scan context are sent only when the user types `/generate`.
 
 Future gates:
 
-- LLM request: show provider, model, input summary, network/cost warning, then require confirmation.
 - Local file write: show absolute target path and overwrite status, then require confirmation.
 - Local Issue Markdown: show title and output path, then require confirmation.
 - Remote Issue: show repo, title, body summary, then require typed confirmation.
