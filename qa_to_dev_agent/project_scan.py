@@ -9,17 +9,31 @@ import tomllib
 
 IGNORED_DIRS = {
     ".ace-tool",
+    ".cache",
     ".git",
     ".idea",
+    ".next",
+    ".nuxt",
+    ".output",
+    ".parcel-cache",
+    ".pnpm-store",
+    ".turbo",
     ".venv",
+    ".vite",
     ".vscode",
+    ".yarn",
     "__pycache__",
+    "build",
+    "cache",
+    "coverage",
     "dependencies",
     "dependency",
     "dist",
     "generated",
     "lib",
     "node_modules",
+    "out",
+    "unpackage",
     "vendor",
 }
 
@@ -79,6 +93,32 @@ COMMON_ENTRY_CANDIDATES = {
     "app/admin/controller",
 }
 
+PRIORITY_PATHS = (
+    "pages.json",
+    "src/pages",
+    "src/components",
+    "src/api",
+    "src/store",
+    "src/router",
+    "src/utils",
+)
+
+TERM_EXPANSIONS = {
+    "订单": ["order", "orders", "orderlist", "order-list"],
+    "order": ["orders", "订单"],
+    "orders": ["order", "订单"],
+    "我的": ["mine", "my", "user", "profile", "account", "member", "me"],
+    "mine": ["my", "user", "profile", "我的"],
+    "user": ["mine", "profile", "account", "我的"],
+    "profile": ["mine", "user", "account", "我的"],
+    "状态": ["status", "state", "tab", "tabs", "switch", "filter"],
+    "status": ["state", "状态", "tab", "tabs", "switch", "filter"],
+    "tab": ["tabs", "status", "状态", "switch", "filter"],
+    "tabs": ["tab", "status", "状态", "switch", "filter"],
+    "switch": ["status", "状态", "tab", "tabs", "filter"],
+    "filter": ["status", "状态", "tab", "tabs", "switch"],
+}
+
 
 @dataclass(frozen=True)
 class ProjectContext:
@@ -135,6 +175,7 @@ def scan_project(project_root: str, qa_input: str = "", max_files: int = 80, max
         raise NotADirectoryError(f"Project path is not a directory: {root}")
 
     files: list[Path] = []
+    collection_limit = max(max_files * 20, 500)
     for current_root, dirs, names in os.walk(root):
         dirs[:] = [name for name in dirs if name not in IGNORED_DIRS]
         for name in names:
@@ -144,17 +185,18 @@ def scan_project(project_root: str, qa_input: str = "", max_files: int = 80, max
             if any(part in IGNORED_DIRS for part in relative.parts):
                 continue
             files.append(relative)
-            if len(files) >= max_files:
+            if len(files) >= collection_limit:
                 break
-        if len(files) >= max_files:
+        if len(files) >= collection_limit:
             break
 
+    prioritized_files = _prioritize_files(files)
     signals = _detect_signals(root, files)
     tech_stack, build_scripts, test_scripts = _detect_project_metadata(root)
     entry_files = _detect_entry_files(root, files)
-    key_code_locations = _find_related_files(files, qa_input)
+    key_code_locations = _find_related_files(prioritized_files, qa_input)
     code_excerpts = _read_safe_excerpts(root, entry_files + key_code_locations, max_excerpt_chars=max_excerpt_chars)
-    sample_tree = [path.as_posix() for path in files[:max_files]]
+    sample_tree = [path.as_posix() for path in prioritized_files[:max_files]]
     return ProjectContext(
         root=root,
         file_count=len(files),
@@ -234,23 +276,50 @@ def _detect_entry_files(root: Path, files: list[Path]) -> list[str]:
 def _find_related_files(files: list[Path], qa_input: str, limit: int = 8) -> list[str]:
     terms = _tokenize(qa_input)
     if not terms:
-        return []
+        return [
+            path.as_posix()
+            for path in files
+            if _is_safe_text_path(path) and _priority_rank(path.as_posix()) < len(PRIORITY_PATHS)
+        ][:limit]
 
     scored: list[tuple[int, str]] = []
     for path in files:
         if not _is_safe_text_path(path):
             continue
         haystack = path.as_posix().lower()
-        score = sum(1 for term in terms if term in haystack)
+        matched_terms = sum(1 for term in terms if term in haystack)
+        if not matched_terms:
+            continue
+        priority_boost = max(0, len(PRIORITY_PATHS) - _priority_rank(haystack))
+        score = matched_terms * 10 + priority_boost
         if score:
             scored.append((score, path.as_posix()))
     scored.sort(key=lambda item: (-item[0], item[1]))
     return [path for _, path in scored[:limit]]
 
 
+def _prioritize_files(files: list[Path]) -> list[Path]:
+    return sorted(files, key=lambda path: (_priority_rank(path.as_posix()), path.as_posix().lower()))
+
+
+def _priority_rank(posix_path: str) -> int:
+    normalized = posix_path.lower()
+    for index, candidate in enumerate(PRIORITY_PATHS):
+        if normalized == candidate or normalized.startswith(f"{candidate}/"):
+            return index
+    return len(PRIORITY_PATHS)
+
+
 def _tokenize(text: str) -> list[str]:
+    normalized = text.lower()
     raw = "".join(ch.lower() if ch.isalnum() else " " for ch in text)
-    return [part for part in raw.split() if len(part) >= 2][:20]
+    tokens = [part for part in raw.split() if len(part) >= 2][:20]
+    expanded = set(tokens)
+    for trigger, additions in TERM_EXPANSIONS.items():
+        if trigger in normalized or trigger in tokens:
+            expanded.add(trigger)
+            expanded.update(additions)
+    return list(expanded)[:60]
 
 
 def _read_safe_excerpts(root: Path, paths: list[str], max_excerpt_chars: int) -> list[str]:

@@ -34,6 +34,10 @@ test("qadev run preflights LLM, prints a local prompt, and ignores protected pat
   fs.writeFileSync(path.join(fixture, "lib", "generated.js"), "generated\n", "utf8");
   fs.mkdirSync(path.join(fixture, "node_modules"));
   fs.writeFileSync(path.join(fixture, "node_modules", "hidden.js"), "hidden\n", "utf8");
+  fs.mkdirSync(path.join(fixture, ".pnpm-store"));
+  fs.writeFileSync(path.join(fixture, ".pnpm-store", "noisy.js"), "hidden\n", "utf8");
+  fs.mkdirSync(path.join(fixture, "unpackage"));
+  fs.writeFileSync(path.join(fixture, "unpackage", "built.js"), "built\n", "utf8");
 
   await withMockChatServer(async ({ baseURL, requests }) => {
     const result = await runNode([
@@ -68,6 +72,8 @@ test("qadev run preflights LLM, prints a local prompt, and ignores protected pat
     assert.doesNotMatch(result.stderr, /mock-secret-key/);
     assert.doesNotMatch(result.stdout, /generated\.js/);
     assert.doesNotMatch(result.stdout, /hidden\.js/);
+    assert.doesNotMatch(result.stdout, /noisy\.js/);
+    assert.doesNotMatch(result.stdout, /built\.js/);
   });
 });
 
@@ -101,6 +107,36 @@ test("qadev run accepts CLI LLM options before scanning", async () => {
     assert.doesNotMatch(result.stderr, /cli-secret-key/);
     assert.doesNotMatch(result.stdout, /env-secret-key/);
     assert.doesNotMatch(result.stderr, /env-secret-key/);
+  });
+});
+
+test("qadev run sends optional provider metadata headers", async () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "qadev-node-"));
+  fs.writeFileSync(path.join(fixture, "todo.js"), "export const todo = true;\n", "utf8");
+
+  await withMockChatServer(async ({ baseURL, requests }) => {
+    const result = await runNode([
+      "run",
+      "--project",
+      fixture,
+      "--input",
+      "needs work",
+      "--print-prompt",
+      "--base-url",
+      baseURL,
+      "--api-key",
+      "cli-secret-key",
+      "--model",
+      "openrouter/mock-model",
+      "--http-referer",
+      "https://example.local",
+      "--app-title",
+      "QA-to-Dev Prompt Agent",
+    ]);
+
+    assert.equal(result.status, 0);
+    assert.equal(requests[0].httpReferer, "https://example.local");
+    assert.equal(requests[0].xTitle, "QA-to-Dev Prompt Agent");
   });
 });
 
@@ -161,6 +197,30 @@ test("qadev run reports connection failure without leaking the key", async () =>
   }, { status: 401 });
 });
 
+test("qadev run includes sanitized provider error detail", async () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "qadev-node-"));
+
+  await withMockChatServer(async ({ baseURL }) => {
+    const result = await runNode(["run", "--project", fixture, "--input", "needs work", "--print-prompt"], {
+      env: llmEnv(baseURL, "bad-secret-key", "openrouter/mock-model"),
+    });
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /chat completions endpoint returned HTTP 403/);
+    assert.match(result.stderr, /Model access denied/);
+    assert.match(result.stderr, /permission_error/);
+    assert.doesNotMatch(result.stderr, /bad-secret-key/);
+  }, {
+    status: 403,
+    body: {
+      error: {
+        message: "Model access denied for bad-secret-key",
+        type: "permission_error",
+      },
+    },
+  });
+});
+
 test("qadev interactive starts after LLM preflight, reports status, and exits", async () => {
   await withMockChatServer(async ({ baseURL }) => {
     const result = await runNode(["interactive"], {
@@ -206,6 +266,82 @@ test("qadev interactive scans, previews, and marks stale after new input", async
   });
 });
 
+test("qadev interactive preview prioritizes key paths and expands Chinese requirement terms", async () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "qadev-node-"));
+  fs.mkdirSync(path.join(fixture, "misc"));
+  for (let index = 0; index < 100; index += 1) {
+    fs.writeFileSync(path.join(fixture, "misc", `noise-${index}.js`), `export const n${index} = true;\n`, "utf8");
+  }
+  fs.mkdirSync(path.join(fixture, "src", "pages", "mine"), { recursive: true });
+  fs.mkdirSync(path.join(fixture, "src", "pages", "misc"), { recursive: true });
+  for (let index = 0; index < 120; index += 1) {
+    fs.writeFileSync(path.join(fixture, "src", "pages", "misc", `noise-${index}.vue`), "<template>noise</template>\n", "utf8");
+  }
+  fs.mkdirSync(path.join(fixture, "src", "api"), { recursive: true });
+  fs.mkdirSync(path.join(fixture, "src", "components", "order"), { recursive: true });
+  fs.mkdirSync(path.join(fixture, "src", "store"), { recursive: true });
+  fs.writeFileSync(path.join(fixture, "pages.json"), JSON.stringify({ pages: ["src/pages/mine/orders"] }), "utf8");
+  fs.writeFileSync(path.join(fixture, "src", "pages", "mine", "orders.vue"), "<template>orders</template>\n", "utf8");
+  fs.writeFileSync(path.join(fixture, "src", "api", "orders.ts"), "export const fetchOrders = () => null;\n", "utf8");
+  fs.writeFileSync(path.join(fixture, "src", "components", "order", "StatusTabs.vue"), "<template>tabs</template>\n", "utf8");
+  fs.writeFileSync(path.join(fixture, "src", "store", "user.ts"), "export const user = {};\n", "utf8");
+
+  await withMockChatServer(async ({ baseURL }) => {
+    const result = await runNode(["interactive"], {
+      input: `/project ${fixture}\n/input 我的订单状态筛选有问题\n/scan\n/preview\n/exit\n`,
+      env: llmEnv(baseURL, "mock-secret-key", "openrouter/mock-model"),
+    });
+
+    assert.equal(result.status, 0);
+    assert.match(result.stdout, /需要优先调查的代码位置/);
+    assert.match(result.stdout, /开发任务骨架/);
+    assert.match(result.stdout, /pages\.json/);
+    assert.match(result.stdout, /src\/pages\/mine\/orders\.vue/);
+    assert.match(result.stdout, /src\/api\/orders\.ts/);
+    assert.match(result.stdout, /src\/components\/order\/StatusTabs\.vue/);
+    assert.match(result.stdout, /src\/store\/user\.ts/);
+    assert.doesNotMatch(result.stdout, /noise-99\.js/);
+  });
+});
+
+test("qadev interactive generate sends scan context only after explicit command and redacts keys", async () => {
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "qadev-node-"));
+  fs.mkdirSync(path.join(fixture, "src", "api"), { recursive: true });
+  fs.writeFileSync(path.join(fixture, "src", "api", "orders.ts"), "export const fetchOrders = () => null;\n", "utf8");
+  fs.mkdirSync(path.join(fixture, ".pnpm-store"));
+  fs.writeFileSync(path.join(fixture, ".pnpm-store", "noise.js"), "hidden\n", "utf8");
+
+  await withMockChatServer(async ({ baseURL, requests }) => {
+    const result = await runNode(["interactive"], {
+      input: `/project ${fixture}\n/input 订单状态筛选需要修复\n/scan\n/generate\n/exit\n`,
+      env: llmEnv(baseURL, "mock-secret-key", "openrouter/mock-model"),
+    });
+
+    assert.equal(result.status, 0);
+    assert.equal(requests.length, 2);
+    assert.doesNotMatch(JSON.stringify(requests[0].body), /订单状态筛选/);
+    assert.match(JSON.stringify(requests[1].body), /订单状态筛选需要修复/);
+    assert.match(JSON.stringify(requests[1].body), /src\/api\/orders\.ts/);
+    assert.doesNotMatch(JSON.stringify(requests[1].body), /noise\.js/);
+    assert.match(result.stdout, /## 开发目标/);
+    assert.match(result.stdout, /修复订单状态筛选/);
+    assert.doesNotMatch(result.stdout, /mock-secret-key/);
+    assert.doesNotMatch(result.stderr, /mock-secret-key/);
+  }, {
+    responseForRequest: (requestIndex) => requestIndex === 0
+      ? {
+        id: "chatcmpl-preflight",
+        object: "chat.completion",
+        choices: [{ message: { role: "assistant", content: "OK" } }],
+      }
+      : {
+        id: "chatcmpl-generate",
+        object: "chat.completion",
+        choices: [{ message: { role: "assistant", content: "## 开发目标\n修复订单状态筛选。\n\n## 需要优先调查的代码位置\n- `src/api/orders.ts`" } }],
+      },
+  });
+});
+
 function runNode(args, options = {}) {
   return new Promise((resolve) => {
     const env = { ...process.env };
@@ -245,6 +381,11 @@ function runNode(args, options = {}) {
 async function withMockChatServer(fn, options = {}) {
   const requests = [];
   const status = options.status ?? 200;
+  const defaultResponseBody = options.body ?? {
+    id: "chatcmpl-test",
+    object: "chat.completion",
+    choices: [{ message: { role: "assistant", content: "OK" } }],
+  };
   const server = http.createServer((request, response) => {
     let rawBody = "";
     request.setEncoding("utf8");
@@ -256,14 +397,13 @@ async function withMockChatServer(fn, options = {}) {
         method: request.method,
         url: request.url,
         authorization: request.headers.authorization,
+        httpReferer: request.headers["http-referer"],
+        xTitle: request.headers["x-title"],
         body: rawBody ? JSON.parse(rawBody) : undefined,
       });
+      const responseBody = options.responseForRequest ? options.responseForRequest(requests.length - 1, requests.at(-1)) : defaultResponseBody;
       response.writeHead(status, { "content-type": "application/json" });
-      response.end(JSON.stringify({
-        id: "chatcmpl-test",
-        object: "chat.completion",
-        choices: [{ message: { role: "assistant", content: "OK" } }],
-      }));
+      response.end(JSON.stringify(responseBody));
     });
   });
 
